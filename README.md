@@ -1,0 +1,3 @@
+# Semestralni projekt
+
+S pomocí pana nadporučíka Ráčila jsem se rozhodl, že můj projekt bude o tom vytvořit program, který bude sledovat vývoj a průběh uživatele v běhání. Myslím si, že zrovna toto téma bude velice přínosné, jelikož já sám mám co zlepšovat v rámci běhání, tudíž si v rámci tohoto předmětu mohu vytvořit program pro vlastní využití a pomoct si. Budu se snažit aby program "sbíral" data o běhu - respektivě nahrávat soubory o každém tréninku a na základě těch bude ohodnocovat můj posun, co jsem mohl udělat lépe a co dělat dále tak, abych jednou byl např. schopen zaběhnout půlmaraton. Klíčový je u uživatele progress, a ten se budu snažit nejlépe vyzobrazit a poskytnout užitečné informace do budoucna, aby progress pokračoval.

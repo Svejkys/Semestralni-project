@@ -32,38 +32,37 @@ static bool NactiAtributDouble(const string& radek,
 
 Activity GpxParser::NactiAktivituZeSouboru(const string& cestaKSouboru,
     const string& nazevAktivity)
-{
+{   //vytvoreni aktivity
     Activity aktivita(nazevAktivity);
-
+    //otevreni gpx souboru jako textoveho souboru
     ifstream soubor(cestaKSouboru);
     if (!soubor) {
         cerr << "Nepodarilo se otevrit soubor: " << cestaKSouboru << endl;
-        return aktivita; // vrátíme prázdnou aktivitu
+        return aktivita; 
     }
 
     string radek;
     int pocitadloBodu = 0;
-
+	//cteni souboru radek po radku
     while (getline(soubor, radek)) {
-        // Hledáme øádky s <trkpt lat="..." lon="...">
+        //hledani zacatku bodu trasy
         if (radek.find("<trkpt") != string::npos) {
+            //vytvoreni trackpointu pro ten bod
             TrackPoint bod{};
             bod.elevation = 0.0;
             bod.time = "";
 
-            // Zkusit naèíst lat a lon
+			//nacteni atributu lat a lon
             bool latOk = NactiAtributDouble(radek, "lat", bod.latitude);
             bool lonOk = NactiAtributDouble(radek, "lon", bod.longitude);
-
+            
             if (!latOk || !lonOk) {
-                // Když se nepodaøí naèíst, tento bod pøeskoèíme
                 continue;
             }
 
-            // Teï naèteme následující øádky až po </trkpt>
-            // a zkusíme z nich vytáhnout <ele> a <time>
+            
             streampos pozicePredDalsimRadkem = soubor.tellg();
-
+            //vyska
             while (getline(soubor, radek)) {
                 if (radek.find("<ele>") != string::npos) {
                     size_t start = radek.find("<ele>");
@@ -79,23 +78,25 @@ Activity GpxParser::NactiAktivituZeSouboru(const string& cestaKSouboru,
                         }
                     }
                 }
+                //cas
                 else if (radek.find("<time>") != string::npos) {
                     size_t start = radek.find("<time>");
                     size_t end = radek.find("</time>");
                     if (start != string::npos && end != string::npos && end > start) {
-                        start += 6; // délka "<time>"
+                        start += 6; 
                         bod.time = radek.substr(start, end - start);
                     }
                 }
+				//konec bodu
                 else if (radek.find("</trkpt>") != string::npos) {
                     // konec jednoho bodu
                     break;
                 }
 
-                // Uložíme pozici pro pøípadné další ètení
+                
                 pozicePredDalsimRadkem = soubor.tellg();
             }
-
+            //ulozit bod do aktivity
             aktivita.addPoint(bod);
             pocitadloBodu++;
         }

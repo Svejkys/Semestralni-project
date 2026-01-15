@@ -1,27 +1,66 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <map>
 #include "Activity.h"
 
 namespace Stats {
 
-    // Spoèítá vzdálenost mezi dvìma GPS body (v kilometrech)
+    // haversinova formule pro výpoèet vzdálenosti mezi dvìma GPS body
     double VzdalenostMeziBody(const TrackPoint& a, const TrackPoint& b);
 
-    // Spoèítá celkovou délku trasy (souèet vzdáleností všech po sobì jdoucích bodù)
+    // spoèítá celkovou vzdálenost trasy
     double SpocitejCelkovoVzdalenostKm(const std::vector<TrackPoint>& body);
 
-    // Pøevod ISO èasu "2023-01-01T12:34:56Z" na sekundy od pùlnoci
+    // pøevede èas ze stringu na sekundy
     int PrevodCasuNaSekundy(const std::string& cas);
 
-    // Struktura pro kilometrový split
+    // struktura pro jeden kilometr
     struct KmSplit {
-        int kmPoradi;          // 1, 2, 3, ...
-        double vzdalenostKm;   // zhruba 1.0 km
-        double casSekundy;     // èas tohoto úseku
-        double tempoMinNaKm;   // pace pro tento úsek
+        int kmPoradi;
+        double vzdalenostKm;
+        double casSekundy;
+        double tempoMinNaKm;
     };
 
-    // Výpoèet kilometrových úsekù pro jednu aktivitu
+    // poèítání kilometrových úsekù
     std::vector<KmSplit> SpocitejKilometroveUseky(const Activity& akt);
+
+
+    bool ZiskejPrvniKmSplit(const Activity& akt, KmSplit& out);
+    bool ZiskejNejlepsiKmSplit(const Activity& akt, KmSplit& out);
+    // opravena deklarace: odstranìno 'static' a použito plné jmenné prost?edí std::vector
+    std::vector<KmSplit> ZiskejVsechnyKmSplity(const Activity& akt);
+
+    std::string FormatTempoMmSsNaKm(double tempoMinNaKm);
+
+    struct IsoTydenKlic {
+        int isoRok;
+        int isoTyden;
+        bool operator<(const IsoTydenKlic& other) const {
+            if (isoRok != other.isoRok) return isoRok < other.isoRok;
+            return isoTyden < other.isoTyden;
+        }
+    };
+
+    struct TrendTydne {
+        int pocetBehu = 0;
+        double celkemKm = 0.0;
+        double celkemCasSek = 0.0;
+
+        double PrumerneTempoMinNaKm() const {
+            if (celkemKm <= 0.0) return 0.0;
+            return (celkemCasSek / 60.0) / celkemKm;
+        }
+    };
+
+    // vezme èas z prvního bodu aktivity a vrátí rok + týden
+    bool ZiskejIsoTydenZRetezce(const std::string& isoTime,
+        int& outIsoRok,
+        int& outIsoTyden);
+
+    // spoèítá týdenní trendy pro více aktivit
+    std::map<IsoTydenKlic, TrendTydne> SpocitejTydenniTrend(
+        const std::vector<Activity>& aktivity);
+
 }

@@ -1,321 +1,263 @@
-﻿// semestralka.cpp : Tento soubor obsahuje funkci main. Provádění programu se tam zahajuje a ukončuje.
-//
-
-#include <iostream>
+﻿#include <iostream>
 #include <vector>
-#include <limits>
-#include <iomanip>
+#include <string>
 #include <filesystem>
+#include <algorithm>
+#include <iomanip>
 #include <sstream>
-#include <map>
-#include <cstdlib>   // pro system()
-#include <cmath>     // pro round()
-
 #include "Activity.h"
-#include "Stats.h"
 #include "GpxParser.h"
+#include "Stats.h"
+#include "GpxExporter.h"
 
-namespace fs = std::filesystem;
 using namespace std;
+namespace fs = std::filesystem;
 
-// ---------------------------------------------------------
-// Pomocná funkce: spočítá vzdálenost a čas aktivity
-// ---------------------------------------------------------
-void SpocitejStatistikyAktivity(Activity& akt)
-{
+static string FormatCasHhMmSs(long long sekundy) {
+    if (sekundy < 0) sekundy = 0;
+    long long h = sekundy / 3600;
+    long long m = (sekundy % 3600) / 60;
+    long long s = sekundy % 60;
+
+    ostringstream oss;
+    oss << h << ":" << setw(2) << setfill('0') << m << ":" << setw(2) << setfill('0') << s;
+    return oss.str();
+}
+
+// cas ve formatu "rok-mesic-den hodiny-minuty-sekundy"
+static long long SekundyDneZIsoCasu(const string& iso) {
+    if (iso.size() < 19) return 0;
+    try {
+        int hh = stoi(iso.substr(11, 2));
+        int mm = stoi(iso.substr(14, 2));
+        int ss = stoi(iso.substr(17, 2));
+        return (long long)hh * 3600LL + (long long)mm * 60LL + (long long)ss;
+    }
+    catch (...) {
+        return 0;
+    }
+}
+
+static string DatumCasZIso(const string& iso) {
+    // vypise cas pokud to jde
+    if (iso.size() < 19) return "neznamy cas";
+    return iso.substr(0, 10) + " " + iso.substr(11, 8);
+}
+
+static void SpocitejStatistikyAktivity(Activity& akt) {
     const auto& body = akt.getPoints();
+    if (body.size() < 2) {
+        akt.setTotalDistanceKm(0.0);
+        akt.setTotalTimeSeconds(0.0);
+        return;
+    }
+
+    // vzdálenost
     double vzd = Stats::SpocitejCelkovoVzdalenostKm(body);
     akt.setTotalDistanceKm(vzd);
 
-    if (body.size() >= 2) {
-        int startSec = Stats::PrevodCasuNaSekundy(body.front().time);
-        int endSec = Stats::PrevodCasuNaSekundy(body.back().time);
+    // čas z prvního a posledního bodu (sekundy dne, ošetření půlnoci)
+    long long t0 = SekundyDneZIsoCasu(body.front().time);
+    long long t1 = SekundyDneZIsoCasu(body.back().time);
+    if (t1 < t0) t1 += 24LL * 3600LL; // přechod přes půlnoc
 
-        int rozdil = endSec - startSec;
-
-        // Kdyby aktivita presla pres pulnoc, cas by byl zaporny -> osetrime.
-        if (rozdil < 0) rozdil += 24 * 3600;
-
-        // Kdyby i tak byl zaporny (divna data), dame 0
-        if (rozdil < 0) rozdil = 0;
-
-        akt.setTotalTimeSeconds(rozdil);
-    }
-    else {
-        akt.setTotalTimeSeconds(0);
-    }
+    akt.setTotalTimeSeconds((double)(t1 - t0));
 }
 
-// ---------------------------------------------------------
-// Výpis souhrnu jedné aktivity
-// ---------------------------------------------------------
-void VypisSouhrnAktivity(const Activity& akt)
-{
-    cout << fixed << setprecision(2);
-    cout << "Aktivita: " << akt.getName() << "\n";
-    cout << "  Vzdalenost: " << akt.getTotalDistanceKm() << " km\n";
-    cout << "  Cas: " << akt.getTotalTimeSeconds() / 60.0 << " min\n";
-    cout << "  Prumerne tempo: " << akt.getAveragePaceMinPerKm() << " min/km\n";
-}
+static vector<Activity> NactiAktivityZeSlozkyData(const fs::path& slozkaData) {
+    vector<Activity> aktivity;
 
-// ---------------------------------------------------------
-// Načtení všech GPX aktivit ze složky (např. "data")
-// ---------------------------------------------------------
-void NactiAktivityZeSlozky(const string& slozka, vector<Activity>& historie)
-{
-    if (!fs::exists(slozka)) {
-        cout << "Slozka \"" << slozka << "\" neexistuje.\n";
-        return;
+    if (!fs::exists(slozkaData)) {
+        cerr << "Slozka neexistuje: " << slozkaData.string() << "\n";
+        return aktivity;
     }
 
-    int pocetNalezenych = 0;
-
-    for (const auto& entry : fs::directory_iterator(slozka)) {
+    for (const auto& entry : fs::directory_iterator(slozkaData)) {
         if (!entry.is_regular_file()) continue;
 
-        auto path = entry.path();
-        if (path.extension() == ".gpx") {
-            string cesta = path.string();
-            string nazev = path.stem().string();
+        fs::path p = entry.path();
+        if (p.extension() != ".gpx") continue;
 
-            Activity akt = GpxParser::NactiAktivituZeSouboru(cesta, nazev);
-            SpocitejStatistikyAktivity(akt);
-            historie.push_back(akt);
-            ++pocetNalezenych;
-        }
+        string nazev = p.stem().string();
+        Activity akt = GpxParser::NactiAktivituZeSouboru(p.string(), nazev);
+        SpocitejStatistikyAktivity(akt);
+        aktivity.push_back(std::move(akt));
     }
 
-    cout << "Nacteno " << pocetNalezenych << " aktivit ze slozky \"" << slozka << "\".\n";
+    return aktivity;
 }
 
-// ---------------------------------------------------------
-// Výpis kilometrových úseků (splitů) aktivity
-// ---------------------------------------------------------
-void VypisKilometroveUseky(const Activity& akt)
-{
-    auto splity = Stats::SpocitejKilometroveUseky(akt);
-    if (splity.empty()) {
-        cout << "Zadne kilometrove useky (malo bodu nebo kratka trasa).\n";
-        return;
-    }
-
-    cout << "Kilometrove useky:\n";
-    cout << fixed << setprecision(2);
-
-    for (const auto& s : splity) {
-        double minuty = s.tempoMinNaKm;
-        int m = static_cast<int>(minuty);
-        int sec = static_cast<int>(round((minuty - m) * 60.0));
-        if (sec == 60) { sec = 0; m++; }
-
-        cout << "  " << s.kmPoradi << ". km"
-            << "  vzdalenost: " << s.vzdalenostKm << " km"
-            << "  cas: " << s.casSekundy / 60.0 << " min"
-            << "  tempo: " << m << ":" << setw(2) << setfill('0')
-            << sec << " min/km\n";
-    }
-}
-
-// ---------------------------------------------------------
-// Otevření TRASY aktivity na Mapy.com (route)
-// - start + end + max 15 waypointů
-// - Mapy očekávají souřadnice ve formátu lon,lat
-// ---------------------------------------------------------
-static string BuildMapyRouteUrl(const Activity& akt, int maxWaypoints = 15)
-{
-    const auto& pts = akt.getPoints();
-    if (pts.size() < 2) return "";
-
-    auto fmt = [](const TrackPoint& p) {
-        ostringstream os;
-        os << fixed << setprecision(6)
-            << p.longitude << "," << p.latitude; // lon,lat !!!
-        return os.str();
+static void SeradAktivityPodleData(vector<Activity>& aktivity) {
+    auto casZacatku = [](const Activity& a) -> string {
+        const auto& pts = a.getPoints();
+        if (pts.empty()) return "";
+        return pts.front().time;
         };
 
-    const TrackPoint& start = pts.front();
-    const TrackPoint& end = pts.back();
-
-    vector<size_t> idx;
-    size_t n = pts.size();
-
-    int k = maxWaypoints;
-    if (n <= 2) k = 0;
-    if (n - 2 < (size_t)k) k = (int)(n - 2);
-
-    // rovnoměrně vybereme body z vnitřku (bez start/end)
-    for (int i = 1; i <= k; ++i) {
-        size_t pos = (size_t)((double)i * (double)(n - 1) / (double)(k + 1));
-        if (pos == 0) pos = 1;
-        if (pos >= n - 1) pos = n - 2;
-        idx.push_back(pos);
-    }
-
-    ostringstream url;
-    url << "https://mapy.com/fnc/v1/route"
-        << "?routeType=foot_fast"
-        << "&start=" << fmt(start)
-        << "&end=" << fmt(end);
-
-    if (!idx.empty()) {
-        url << "&waypoints=";
-        for (size_t i = 0; i < idx.size(); ++i) {
-            if (i) url << ";";
-            url << fmt(pts[idx[i]]);
-        }
-    }
-
-    return url.str();
+    sort(aktivity.begin(), aktivity.end(),
+        [&](const Activity& a, const Activity& b) {
+            return casZacatku(a) < casZacatku(b);
+        });
 }
 
-void OtevriTrasouNaMapyCom(const Activity& akt)
-{
-    string url = BuildMapyRouteUrl(akt);
-    if (url.empty()) {
-        cout << "Aktivita nema dost bodu pro trasu.\n";
+static void VypisSeznamAktivit(const vector<Activity>& aktivity) {
+    if (aktivity.empty()) {
+        cout << "Zadne aktivity nejsou nactene.\n";
         return;
     }
 
-    string cmd = "start \"\" \"" + url + "\"";
-    system(cmd.c_str());
+    cout << "\n--- Seznam aktivit ---\n";
+    for (size_t i = 0; i < aktivity.size(); ++i) {
+        const auto& a = aktivity[i];
+        const auto& pts = a.getPoints();
+
+        string start = pts.empty() ? "neznamy cas" : DatumCasZIso(pts.front().time);
+
+        cout << "[" << i << "] " << a.getName()
+            << " | " << fixed << setprecision(2) << a.getTotalDistanceKm() << " km"
+            << " | cas: " << FormatCasHhMmSs((long long)a.getTotalTimeSeconds())
+            << " | prumerne tempo: " << Stats::FormatTempoMmSsNaKm(a.getAveragePaceMinPerKm())
+            << "\n";
+    }
 }
 
-// ---------------------------------------------------------
-// Získání data (YYYY-MM-DD) aktivity z prvního bodu
-// ---------------------------------------------------------
-string ZiskejDatumAktivity(const Activity& akt)
-{
-    const auto& body = akt.getPoints();
-    if (body.empty()) return "N/A";
 
-    const string& t = body.front().time;
-    if (t.size() < 10) return "N/A";
-    return t.substr(0, 10);
+static void VypisDetailAktivity(const Activity& akt) {
+    cout << "\n--- Detail aktivity: " << akt.getName() << " ---\n";
+
+    const auto& pts = akt.getPoints();
+    if (!pts.empty()) {
+        cout << "Start: " << DatumCasZIso(pts.front().time) << "\n";
+    }
+
+    cout << "Vzdalenost: " << fixed << setprecision(2) << akt.getTotalDistanceKm() << " km\n";
+    cout << "Cas: " << FormatCasHhMmSs((long long)akt.getTotalTimeSeconds()) << "\n";
+    cout << "Prumerne tempo: " << Stats::FormatTempoMmSsNaKm(akt.getAveragePaceMinPerKm()) << "\n";
+
+    
+    vector<Stats::KmSplit> splity = Stats::ZiskejVsechnyKmSplity(akt);
+
+    if (splity.empty()) {
+        cout << "Splity: nelze spocitat (malo bodu / kratka aktivita)\n";
+    }
+    else {
+        cout << "\n--- Km splity ---\n";
+        for (const auto& s : splity) {
+            cout << s.kmPoradi << ". km split: "
+                << Stats::FormatTempoMmSsNaKm(s.tempoMinNaKm)
+                << "\n";
+        }
+
+        
+        auto bestIt = min_element(splity.begin(), splity.end(),
+            [](const Stats::KmSplit& a, const Stats::KmSplit& b) {
+                return a.tempoMinNaKm < b.tempoMinNaKm;
+            });
+
+        cout << "Nejlepsi split (km " << bestIt->kmPoradi << "): "
+            << Stats::FormatTempoMmSsNaKm(bestIt->tempoMinNaKm)
+            << "\n";
+    }
+
 }
 
-// ---------------------------------------------------------
-// Trend tempa podle dní
-// ---------------------------------------------------------
-void VypisTempoTrenduPodleDnu(const vector<Activity>& historie)
-{
-    if (historie.empty()) {
-        cout << "Zadne aktivity.\n";
+static void VypisTydenniTrend(const vector<Activity>& aktivity) {
+    auto trend = Stats::SpocitejTydenniTrend(aktivity);
+	//osetreni prazdneho trendu
+    if (trend.empty()) {
+        cout << "Trend je prazdny (zadna data / chyba v casech).\n";
         return;
     }
 
-    map<string, pair<double, int>> denNaTempo;
-
-    for (const auto& akt : historie) {
-        if (akt.getTotalDistanceKm() <= 0.0 || akt.getTotalTimeSeconds() <= 0.0)
-            continue;
-
-        string datum = ZiskejDatumAktivity(akt);
-        double tempo = akt.getAveragePaceMinPerKm();
-
-        auto& ref = denNaTempo[datum];
-        ref.first += tempo;
-        ref.second += 1;
-    }
-
-    if (denNaTempo.empty()) {
-        cout << "Neni dost dat pro vypocet trendu.\n";
-        return;
-    }
-
-    cout << "\n--- Trend tempa podle dnu ---\n";
-    cout << fixed << setprecision(2);
-
-    for (const auto& [datum, data] : denNaTempo) {
-        double avgTempo = data.first / data.second;
-        cout << datum << "  prumerne tempo: " << avgTempo
-            << " min/km"
-            << "  (" << data.second << " behu)\n";
+    cout << "\n--- Tydenni trend ---\n";
+    for (const auto& [klic, t] : trend) {
+        cout << klic.isoRok << " Tyden c." << (klic.isoTyden < 10 ? "0" : "") << klic.isoTyden
+            << ": " << t.pocetBehu << " behu, "
+            << fixed << setprecision(2) << t.celkemKm << " km, tempo "
+            << Stats::FormatTempoMmSsNaKm(t.PrumerneTempoMinNaKm())
+            << "\n";
     }
 }
 
-// ---------------------------------------------------------
-// MAIN
-// ---------------------------------------------------------
-int main()
-{
-    vector<Activity> historie;
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    // 1) Automaticky nacist vsechny .gpx ze slozky "data"
-    NactiAktivityZeSlozky("data", historie);
+    fs::path slozkaData = fs::current_path() / "data";
 
-    int volba = 0;
+    vector<Activity> aktivity = NactiAktivityZeSlozkyData(slozkaData);
+    SeradAktivityPodleData(aktivity);
 
-    while (true)
-    {
-        cout << "\n==== BEZECKA ANALYZA (mini Strava v C++) ====\n";
-        cout << "1) Vypsat vsechny aktivity\n";
-        cout << "2) Zobrazit kilometrove useky vybrane aktivity\n";
-        cout << "3) Otevrit vybranou aktivitu na Mapy.com (trasa)\n";
-        cout << "4) Zobrazit trend tempa podle dnu\n";
-        cout << "5) Konec\n";
-        cout << "Zadej volbu: ";
-        cin >> volba;
+    while (true) {
+        cout << "\n=============================\n";
+        cout << "        Strava Projekt";
+        cout << "\n=============================\n";
+        cout << "1) Vypsat seznam aktivit\n";
+        cout << "2) Detail aktivity\n";
+        cout << "3) Tydenni trend\n";
+        cout << "4) Znovu nacist data a seradit\n";
+        cout << "5) Export aktivity pro Mapy.cz (GPX)\n";
+        cout << "0) Konec\n";
+        cout << "Volba: ";
 
-        if (!cin) {
-            cin.clear();
-            cin.ignore(numeric_limits<streamsize>::max(), '\n');
-            cout << "Neplatny vstup, zkus to znovu.\n";
-            continue;
+        int volba = -1;
+        if (!(cin >> volba)) {
+            cout << "Neplatny vstup.\n";
+            return 0;
         }
 
-        if (volba == 1) {
-            if (historie.empty()) {
-                cout << "Zadne aktivity v historii.\n";
-            }
-            else {
-                cout << "\n--- Historie aktivit ---\n";
-                for (size_t i = 0; i < historie.size(); ++i) {
-                    cout << "[" << (i + 1) << "] ";
-                    VypisSouhrnAktivity(historie[i]);
-                }
-            }
-        }
-        else if (volba == 2) {
-            if (historie.empty()) {
-                cout << "Zadne aktivity.\n";
-            }
-            else {
-                cout << "Zadej cislo aktivity: ";
-                size_t idx;
-                cin >> idx;
-                if (idx == 0 || idx > historie.size()) {
-                    cout << "Neplatne cislo.\n";
-                }
-                else {
-                    VypisKilometroveUseky(historie[idx - 1]);
-                }
-            }
-        }
-        else if (volba == 3) {
-            if (historie.empty()) {
-                cout << "Zadne aktivity.\n";
-            }
-            else {
-                cout << "Zadej cislo aktivity: ";
-                size_t idx;
-                cin >> idx;
-                if (idx == 0 || idx > historie.size()) {
-                    cout << "Neplatne cislo.\n";
-                }
-                else {
-                    OtevriTrasouNaMapyCom(historie[idx - 1]);
-                }
-            }
-        }
-        else if (volba == 4) {
-            VypisTempoTrenduPodleDnu(historie);
-        }
-        else if (volba == 5) {
-            cout << "Ukoncuji program.\n";
+        if (volba == 0) {
+            cout << "Konec.\n";
             break;
         }
+        else if (volba == 1) {
+            VypisSeznamAktivit(aktivity);
+        }
+        else if (volba == 2) {
+            if (aktivity.empty()) {
+                cout << "Zadne aktivity.\n";
+                continue;
+            }
+            cout << "Zadej index aktivity: ";
+            int idx;
+            cin >> idx;
+            if (idx < 0 || idx >= (int)aktivity.size()) {
+                cout << "Spatny index.\n";
+                continue;
+            }
+            VypisDetailAktivity(aktivity[idx]);
+        }
+        else if (volba == 3) {
+            VypisTydenniTrend(aktivity);
+        }
+        else if (volba == 4) {
+            aktivity = NactiAktivityZeSlozkyData(slozkaData);
+            SeradAktivityPodleData(aktivity);
+            cout << "Nacteno: " << aktivity.size() << " aktivit.\n";
+        }
+        else if (volba == 5) {
+            if (aktivity.empty()) {
+                cout << "Zadne aktivity.\n";
+                continue;
+            }
+            cout << "Zadej index aktivity pro export: ";
+            int idx;
+            cin >> idx;
+            if (idx < 0 || idx >= (int)aktivity.size()) {
+                cout << "Spatny index.\n";
+                continue;
+            }
+            fs::path outPath = fs::current_path() / (aktivity[idx].getName() + "_export.gpx");
+            try {
+                GpxExporter::ExportToGpx(aktivity[idx], outPath.string());
+                cout << "Aktivita exportovana do: " << outPath.string() << "\n";
+            }
+            catch (const exception& ex) {
+                cout << "Chyba pri exportu: " << ex.what() << "\n";
+            }
+		}
         else {
-            cout << "Neplatna volba.\n";
+            cout << "Neznama volba.\n";
         }
     }
 

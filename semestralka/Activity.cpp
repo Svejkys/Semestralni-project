@@ -1,7 +1,7 @@
 #include "Activity.h"
 using namespace std;
 
-Activity::Activity(const std::string& name)
+Activity::Activity(const string& name)
     : NazevAktivity(name), CelkovaVzdalenostKm(0.0), CelkovyCasSekundy(0.0) {
 }
 
@@ -12,6 +12,11 @@ void Activity::addPoint(const TrackPoint& p) {
 const std::vector<TrackPoint>& Activity::getPoints() const {
     return points_;
 }
+
+const string& Activity::getName() const {
+    return NazevAktivity;
+}
+
 
 void Activity::setTotalDistanceKm(double d) {
     CelkovaVzdalenostKm = d;
@@ -35,6 +40,3 @@ double Activity::getAveragePaceMinPerKm() const {
     return minutes / CelkovaVzdalenostKm;
 }
 
-const std::string& Activity::getName() const {
-    return NazevAktivity;
-}

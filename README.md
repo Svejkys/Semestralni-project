@@ -1,7 +1,6 @@
 # SEMESTRÁLNÍ PROJEKT - ANALÝZA BĚŽECKÝCH AKTIVIT
 
-#Úvod
-Díky tomu, že jsem si v poslední době oblíbil běhání a díky pomoci pana nadporučíka jsem se rozhodl, že jako projekt udělám analýzu běžeckých tréninků. Mým projektem je konzolová C++ aplikace, která načítá, analyzuje a zobrazuje běžecké aktivity uložené ve formátu .gpx. Tento formát jsem zvolil z důvodu hodinek Garmin, na kterých si běhání měřím, tudíž jsem naimportoval předešlé tréninky z aplikace Strava do projektu, která tento formát podporuje. Speciální funkcí je i zobrazení běhu na stránce Mapy.cz.
+Mým projektem je konzolová C++ aplikace, která načítá, analyzuje a zobrazuje běžecké aktivity uložené ve formátu .gpx. Tento formát jsem zvolil z důvodu hodinek Garmin, na kterých si běhání měřím, tudíž jsem naimportoval předešlé tréninky z aplikace Strava do projektu, která tento formát podporuje. Speciální funkcí je i zobrazení běhu na stránce Mapy.cz.
 
 #FUNKCE PROJEKTU
 -

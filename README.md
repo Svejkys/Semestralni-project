@@ -21,7 +21,7 @@ Projekt sem rozdělil do několika částí:
 -> GpxExporter (Umožňuje nahrát aktivitu na Mapy.cz a zobrazit uběhnutou trasu)
 -> Main (Zobrazuje výstup celého programu, se kterým uživatel interaguje)
 ________________________
-|__data
+|--data
 |--Activity.h / .cpp
 |--GpxParser.h / .cpp
 |--GpxExporter.h / .cpp

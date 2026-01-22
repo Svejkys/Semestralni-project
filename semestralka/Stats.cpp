@@ -29,14 +29,13 @@ namespace Stats {
 		return doy; //day of year
     }
 
-    // 0=Po ... 6=Ne
     static int DenVTydnuPo0(int rok, int mesic, int den) {
-        // Sakamoto: 0=Ne..6=So, upravíme na 0=Po..6=Ne
+        
         static int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
         int y = rok;
         if (mesic < 3) y -= 1;
-        int wSun0 = (y + y / 4 - y / 100 + y / 400 + t[mesic - 1] + den) % 7; // 0=Ne
-        int wMon0 = (wSun0 + 6) % 7; // posun: Po=0 ... Ne=6
+        int wSun0 = (y + y / 4 - y / 100 + y / 400 + t[mesic - 1] + den) % 7; 
+        int wMon0 = (wSun0 + 6) % 7; 
         return wMon0;
     }
 
@@ -53,7 +52,6 @@ namespace Stats {
         return true;
     }
 
-    // sekundy dne z "YYYY-MM-DDTHH:MM:SSZ"
     static long long SekundyDneZIsoCasu(const string& iso) {
         if (iso.size() < 19) return 0;
         try {
@@ -68,8 +66,7 @@ namespace Stats {
     }
 
     static int PocetIsoTydnuVRoce(int rok) {
-        // ISO: 53 týdnù když 1.1. je ètvrtek nebo pøestupný rok a 1.1. je støeda
-        int dowJan1_iso = DenVTydnuPo0(rok, 1, 1) + 1; // 1=Po..7=Ne
+        int dowJan1_iso = DenVTydnuPo0(rok, 1, 1) + 1; 
         if (dowJan1_iso == 4) return 53;
         if (JePrestupnyRok(rok) && dowJan1_iso == 3) return 53;
         return 52;
@@ -84,25 +81,21 @@ namespace Stats {
         return oss.str();
     }
 
-   
-
-    // Haversinova formule
+    // haversinova formule
     double VzdalenostMeziBody(const TrackPoint& a, const TrackPoint& b) {
         const double R = 6371.0;
         double lat1 = StupneNaRadiany(a.latitude);
         double lat2 = StupneNaRadiany(b.latitude);
         double dLat = lat2 - lat1;
         double dLon = StupneNaRadiany(b.longitude - a.longitude);
-
         double sinDLat = sin(dLat / 2.0);
         double sinDLon = sin(dLon / 2.0);
-
         double h = sinDLat * sinDLat + cos(lat1) * cos(lat2) * sinDLon * sinDLon;
         double c = 2.0 * asin(min(1.0, sqrt(h)));
         return R * c;
     }
 
-    // Celková vzdálenost trasy v km
+    // celková vzdálenost trasy v km
     double SpocitejCelkovoVzdalenostKm(const vector<TrackPoint>& body) {
         if (body.size() < 2) return 0.0;
         double sum = 0.0;
@@ -112,7 +105,7 @@ namespace Stats {
         return sum;
     }
 
-    // Pøevede "HH:MM:SS" nebo "MM:SS" na sekundy
+    // Pøevede HH:MM:SS nebo MM:SS na sekundy
     int PrevodCasuNaSekundy(const string& cas) {
         int h = 0, m = 0, s = 0;
         char c1 = 0, c2 = 0;
@@ -142,16 +135,12 @@ namespace Stats {
         const auto& body = akt.getPoints();
         if (body.size() < 2) return splits;
 
-        // Budeme držet “virtuální start splitu” pøes èas i vzdálenost,
-        // aby split navazoval hezky (bez velkých skokù).
         double celkovaVzd = 0.0;
         double hraniceKm = 1.0;
 
-        // èasové reference
         long long startSek = SekundyDneZIsoCasu(body[0].time);
         long long lastSek = startSek;
 
-        // start aktuálního splitu
         long long splitStartSek = startSek;
         double splitStartVzd = 0.0;
         int poradiKm = 1;
@@ -164,21 +153,18 @@ namespace Stats {
             long long sekNow = SekundyDneZIsoCasu(body[i].time);
             if (sekNow < lastSek) sekNow += 24LL * 3600LL; // pùlnoc
             long long sekPrev = SekundyDneZIsoCasu(body[i - 1].time);
-            if (sekPrev < startSek) sekPrev += 24LL * 3600LL; // pro jistotu
+            if (sekPrev < startSek) sekPrev += 24LL * 3600LL; 
             lastSek = sekNow;
 
-            // Pokud jsme pøesáhli 1km hranici, mùže se stát, že v jednom segmentu uzavøeme více km.
             while (celkovaVzd >= hraniceKm && dKm > 0.0) {
-                double need = hraniceKm - vzdPred; // kolik km chybí do hranice uvnitø segmentu
+                double need = hraniceKm - vzdPred; 
                 double ratio = need / dKm;
                 if (ratio < 0.0) ratio = 0.0;
                 if (ratio > 1.0) ratio = 1.0;
 
-
-                // interpolace èasu na hranici
                 long long sekHranice = sekPrev + (long long)llround((sekNow - sekPrev) * ratio);
 
-                double splitVzd = hraniceKm - splitStartVzd; // ~1.0
+                double splitVzd = hraniceKm - splitStartVzd;
                 double splitCas = (double)(sekHranice - splitStartSek);
 
                 KmSplit s;
@@ -188,16 +174,11 @@ namespace Stats {
                 s.tempoMinNaKm = (splitVzd > 0.0) ? ((splitCas / 60.0) / splitVzd) : 0.0;
 
                 splits.push_back(s);
-
-                // další split zaèíná pøesnì na hranici
                 poradiKm++;
                 splitStartSek = sekHranice;
                 splitStartVzd = hraniceKm;
 
                 hraniceKm += 1.0;
-                // pozor: vzdPred i dKm se vztahují k pùvodnímu segmentu, ale pro vícekilometrový skok je to OK,
-                // protože celkovaVzd a hraniceKm pokraèují a ratio se poèítá vždy vùèi stejné dKm a vzdPred (pùvodní).
-                // Reálnì vícekilometrové pøeskoèení v bìhu skoro nenastane (body jsou èasto), ale je to ošetøené.
             }
         }
 
@@ -224,15 +205,12 @@ namespace Stats {
         return true;
     }
 
-    // ------------------------------------------------------------
-    // ISO TÝDEN: rok + èíslo týdne z ISO èasu (YYYY-MM-DD...)
-    // ------------------------------------------------------------
     bool ZiskejIsoTydenZRetezce(const string& isoTime, int& outIsoRok, int& outIsoTyden) {
         int rok, mesic, den;
         if (!ParsujIsoDatum(isoTime, rok, mesic, den)) return false;
 
         int doy = DenVRoce(rok, mesic, den);
-        int dowIso = DenVTydnuPo0(rok, mesic, den) + 1; // 1=Po..7=Ne
+        int dowIso = DenVTydnuPo0(rok, mesic, den) + 1; 
 
         int tyden = (doy - dowIso + 10) / 7;
         int isoRok = rok;
@@ -254,9 +232,6 @@ namespace Stats {
         return true;
     }
 
-    // ------------------------------------------------------------
-    // Týdenní trend (ISO týdny): prùmìrné tempo + km + poèet bìhù
-    // ------------------------------------------------------------
     map<IsoTydenKlic, TrendTydne> SpocitejTydenniTrend(const vector<Activity>& aktivity) {
         map<IsoTydenKlic, TrendTydne> trend;
 
@@ -280,4 +255,4 @@ namespace Stats {
         return trend;
     }
 
-} // namespace Stats
+} 

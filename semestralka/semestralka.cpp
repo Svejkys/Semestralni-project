@@ -195,7 +195,7 @@ int main() {
         cout << "1) Vypsat seznam aktivit\n";
         cout << "2) Detail aktivity\n";
         cout << "3) Tydenni trend\n";
-        cout << "4) Znovu nacist data a seradit\n";
+        cout << "4) Znovu nacist aktivity\n";
         cout << "5) Export aktivity pro Mapy.cz (GPX)\n";
         cout << "0) Konec\n";
         cout << "Volba: ";
